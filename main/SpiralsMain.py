@@ -198,6 +198,16 @@ class PortsPopup(tk.Toplevel):
         self.summary.pack(fill="both", expand=True, pady=(6, 0))
         self._refresh_summary()
 
+        ttk.Label(
+            right,
+            text=(
+                "After filling the fields, click 'Run PlotGeneration' below to build ports, "
+                "run analyses, and write results under each spiral's Analysis folder (plus Global_Report)."
+            ),
+            wraplength=580,
+            foreground="#404040",
+        ).pack(fill="x", pady=(6, 0))
+
         action = ttk.Frame(self)
         action.pack(fill="x", side="bottom", pady=8, padx=10)
         ttk.Button(action, text="Run PlotGeneration", command=self._run_plots).pack(side="right", padx=6)
