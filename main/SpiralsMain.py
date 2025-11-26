@@ -252,9 +252,10 @@ class PortsPopup(tk.Toplevel):
         for token in re.split(r"[;,\s]+", raw.strip()):
             if not token:
                 continue
-            match = re.match(r"(?i)L?(\d+)$", token.strip())
-            if match:
-                layers.append(int(match.group(1)))
+            try:
+                layers.append(int(token))
+            except ValueError:
+                continue
         return layers
 
     def _get_layers_info(self, path: Path) -> List[Dict[str, object]]:
