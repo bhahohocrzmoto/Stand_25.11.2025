@@ -252,9 +252,10 @@ class PortsPopup(tk.Toplevel):
         for token in re.split(r"[;,\s]+", raw.strip()):
             if not token:
                 continue
-            match = re.match(r"(?i)L?(\d+)$", token.strip())
-            if match:
-                layers.append(int(match.group(1)))
+            try:
+                layers.append(int(token))
+            except ValueError:
+                continue
         return layers
 
     def _get_layers_info(self, path: Path) -> List[Dict[str, object]]:
@@ -312,43 +313,33 @@ class PortsPopup(tk.Toplevel):
 
     def _build_transformer_ports(
         self, layers: List[Dict[str, object]], primary_layers: List[int], secondary_layers: List[int], phase_count: int
-    ) -> Tuple[Optional[Dict[str, Dict[str, object]]], Optional[str]]:
+    ) -> Optional[Dict[str, Dict[str, object]]]:
         if not primary_layers and not secondary_layers:
-            return None, "no primary/secondary layers selected"
+            return None
         layer_numbers = {int(info["layer"]) for info in layers}
-        missing = [layer for layer in primary_layers + secondary_layers if layer not in layer_numbers]
-        if missing:
-            return None, f"missing layers in folder name: {', '.join(f'L{m}' for m in missing)}"
-        if phase_count <= 0:
-            return None, "phase count must be positive"
+        if any(layer not in layer_numbers for layer in primary_layers + secondary_layers):
+            return None
         total = sum(int(item["K"]) for item in layers)
         # Build mapping from layer -> info for quick lookup
         layer_map = {int(item["layer"]): item for item in layers}
 
-        def validate_phase_counts(selected: List[int]) -> Optional[str]:
+        def validate_phase_counts(selected: List[int]) -> bool:
             for layer in selected:
                 info = layer_map.get(layer)
                 if info is None:
-                    return "layer missing"
+                    return False
                 k = int(info["K"])
-                if k % phase_count != 0:
-                    return f"L{layer} has K={k} which is not divisible by {phase_count} phases"
-            return None
+                if phase_count == 0 or k % phase_count != 0:
+                    return False
+            return True
 
-        err_primary = validate_phase_counts(primary_layers)
-        err_secondary = validate_phase_counts(secondary_layers)
-        if err_primary:
-            return None, err_primary
-        if err_secondary:
-            return None, err_secondary
+        if not validate_phase_counts(primary_layers) or not validate_phase_counts(secondary_layers):
+            return None
 
         # Optional custom mapping overrides auto grouping
         custom_text = self.var_custom_ports.get("1.0", "end").strip()
         if custom_text:
-            ports = self._parse_custom_ports(custom_text, total)
-            if not ports:
-                return None, "custom port mapping is empty/invalid"
-            return ports, None
+            return self._parse_custom_ports(custom_text, total)
 
         ports: Dict[str, Dict[str, object]] = {}
         letters = PHASE_LETTERS[:phase_count]
@@ -380,7 +371,7 @@ class PortsPopup(tk.Toplevel):
                     "raw_indices": ",".join(str(i) for i in s_indices),
                 }
 
-        return ports, None
+        return ports
 
     def _run_plots(self):
         self._refresh_summary()
@@ -452,20 +443,11 @@ class PortsPopup(tk.Toplevel):
                         }
 
             if enable_tx:
-                zc_path = path / "FastSolver" / "Zc.mat"
-                cap_path = path / "FastSolver" / "CapacitanceMatrix.txt"
-                if not (zc_path.exists() and cap_path.exists()):
-                    append_line(na_tx, f"{path.name}: missing Zc.mat or CapacitanceMatrix.txt")
-                    append_line(na_path, path.name)
-                    self.log.insert("end", f"Transformer skipped for {path.name}: missing Zc.mat or CapacitanceMatrix.txt\n")
+                tx_ports = self._build_transformer_ports(layers, primary_layers, secondary_layers, phase_count)
+                if tx_ports is None:
+                    append_line(na_tx, path.name)
                 else:
-                    tx_ports, reason = self._build_transformer_ports(layers, primary_layers, secondary_layers, phase_count)
-                    if tx_ports is None:
-                        append_line(na_tx, f"{path.name}: {reason}")
-                        append_line(na_path, path.name)
-                        self.log.insert("end", f"Transformer skipped for {path.name}: {reason}\n")
-                    else:
-                        ports.update(tx_ports)
+                    ports.update(tx_ports)
 
             if not ports:
                 continue
